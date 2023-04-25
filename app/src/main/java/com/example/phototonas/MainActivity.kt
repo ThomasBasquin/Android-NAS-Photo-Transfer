@@ -1,6 +1,7 @@
 package com.example.phototonas
 
 import android.annotation.SuppressLint
+import android.os.AsyncTask
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.appcompat.app.AppCompatActivity
@@ -51,20 +52,38 @@ class MainActivity : AppCompatActivity(){
     }
 
 
-    private fun connectToNAS(username: String, password: String, domain: String): SMBClient {
-        val config = SmbConfig.builder()
-            .withMultiProtocolNegotiate(true)
-            .build()
+    class ConnectToNasTask(
+        private val username: String,
+        private val password: String,
+        private val domain: String,
+        private val onConnected: (SMBClient) -> Unit
+    ) : AsyncTask<Void, Void, SMBClient>() {
 
-        val client = SMBClient(config)
-        val address = InetAddress.getByName("192.168.1.10")
-        val auth = AuthenticationContext(username, password.toCharArray(), domain)
+        override fun doInBackground(vararg params: Void?): SMBClient {
+            val config = SmbConfig.builder()
+                .withMultiProtocolNegotiate(true)
+                .build()
 
-        val connection = client.connect(address.toString())
-        val session = connection.authenticate(auth)
+            val client = SMBClient(config)
+            val address = InetAddress.getByName("192.168.1.10")
+            val auth = AuthenticationContext(username, password.toCharArray(), domain)
 
-        return client
+            val connection = client.connect(address.toString())
+            val session = connection.authenticate(auth)
+
+            return client
+        }
+
+        override fun onPostExecute(result: SMBClient) {
+            super.onPostExecute(result)
+            onConnected(result)
+        }
     }
+
+
+
+
+
 
     private fun transferPhotosAndRemoveDuplicates(nasClient: SMBClient, photoFiles: List<File>) {
         val connection = nasClient.connect(InetAddress.getByName("192.168.1.10").toString())
@@ -184,11 +203,13 @@ class MainActivity : AppCompatActivity(){
         val btnTransfer = findViewById<Button>(R.id.btnTransfer)
         btnTransfer.setOnClickListener {
             val photoFiles = getAllPhotosFromNestor()
-            val nasClient = connectToNAS("admin", "Felmdam!", "")
-            transferPhotosAndRemoveDuplicates(nasClient, photoFiles)
-            nasClient.close()
+            ConnectToNasTask("admin", "Felmdam!", "", onConnected = { nasClient ->
+                transferPhotosAndRemoveDuplicates(nasClient, photoFiles)
+                nasClient.close()
+            }).execute()
         }
     }
+
 
 
 
